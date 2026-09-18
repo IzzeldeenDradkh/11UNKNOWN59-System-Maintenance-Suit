@@ -271,6 +271,74 @@ function Invoke-HardwareDashboard {
     $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown");
 }
 
+# Device Timeline (creation date / first sign-in estimates)
+function Invoke-DeviceTimeline {
+    Clear-Host;
+    Write-Host "===================================================" -ForegroundColor Gray;
+    Write-Host "        AetherOrigin Device Timeline                " -ForegroundColor Gray;
+    Write-Host "===================================================`n" -ForegroundColor Gray;
+    Write-Host "   None of these is a single 'true' answer — each measures" -ForegroundColor DarkGray;
+    Write-Host "   something different, and reimaging/resets can reset them." -ForegroundColor DarkGray;
+    Write-Host "";
+
+    # 1. OS Install Date
+    Write-Host " [OS INSTALL DATE]" -ForegroundColor Cyan;
+    try {
+        $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop;
+        $installDate = $os.InstallDate;
+        Write-Host "   -> $installDate" -ForegroundColor Green;
+        Write-Host "      (When this copy of Windows was installed/imaged — not" -ForegroundColor DarkGray;
+        Write-Host "       necessarily when you first used the device.)`n" -ForegroundColor DarkGray;
+    } catch {
+        Write-Host "   -> Unable to retrieve.`n" -ForegroundColor DarkRed;
+    }
+
+    # 2. OOBE / First Boot Completion
+    Write-Host " [FIRST BOOT / OOBE COMPLETION]" -ForegroundColor Cyan;
+    try {
+        $OobeKey = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\OOBE" -Name InstallTime -ErrorAction Stop;
+        $FileTime = $OobeKey.InstallTime;
+        $HighPart = [BitConverter]::ToInt64($FileTime, 0);
+        $OobeDate = [DateTime]::FromFileTimeUtc($HighPart);
+        Write-Host "   -> $OobeDate (UTC)" -ForegroundColor Green;
+        Write-Host "      (When the initial out-of-box setup finished — often close" -ForegroundColor DarkGray;
+        Write-Host "       to the real 'first power-on' moment.)`n" -ForegroundColor DarkGray;
+    } catch {
+        Write-Host "   -> Not available on this system/Windows build.`n" -ForegroundColor DarkRed;
+    }
+
+    # 3. First User Sign-In (profile folder creation)
+    Write-Host " [USER PROFILE CREATION (sign-in proxy)]" -ForegroundColor Cyan;
+    try {
+        $Profiles = Get-ChildItem "$env:SystemDrive\Users" -Directory -ErrorAction Stop |
+            Where-Object { $_.Name -notmatch "^(Public|Default.*|All Users)$" };
+        foreach ( $p in $Profiles ) {
+            Write-Host "   -> $($p.Name)  : $($p.CreationTime)" -ForegroundColor Green;
+        }
+        Write-Host "      (Approximates when each account first signed in — resets" -ForegroundColor DarkGray;
+        Write-Host "       if the profile was ever deleted/recreated.)`n" -ForegroundColor DarkGray;
+    } catch {
+        Write-Host "   -> Unable to retrieve.`n" -ForegroundColor DarkRed;
+    }
+
+    # 4. BIOS / Hardware Manufacture Info
+    Write-Host " [BIOS / HARDWARE INFO]" -ForegroundColor Cyan;
+    try {
+        $bios = Get-CimInstance Win32_BIOS -ErrorAction Stop;
+        Write-Host "   -> Manufacturer : $($bios.Manufacturer)" -ForegroundColor Green;
+        Write-Host "   -> Release Date : $($bios.ReleaseDate)" -ForegroundColor Green;
+        Write-Host "   -> Serial No.   : $($bios.SerialNumber)" -ForegroundColor Green;
+        Write-Host "      (Closest thing to actual hardware age — unaffected by" -ForegroundColor DarkGray;
+        Write-Host "       Windows reinstalls.)`n" -ForegroundColor DarkGray;
+    } catch {
+        Write-Host "   -> Unable to retrieve.`n" -ForegroundColor DarkRed;
+    }
+
+    Write-Host "---------------------------------------------------" -ForegroundColor Gray;
+    Write-Host " Press any key to return to menu..." -ForegroundColor Gray;
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown");
+}
+
 # Diagnostic Reports Functions
 function Fix-HtmlReport {
     param ([string]$ReportPath)
@@ -564,10 +632,12 @@ do {
     Write-Host "     (Export All Third-Party Drivers to Desktop)" -ForegroundColor DarkGray;
     Write-Host " [F] NexusVault Master Control" -ForegroundColor Gray;
     Write-Host "     (Open Unified God Mode Control Panel)" -ForegroundColor DarkGray;
+    Write-Host " [G] AetherOrigin Device Timeline" -ForegroundColor Gray;
+    Write-Host "     (OS Install / First Boot / Sign-In / BIOS Dates)" -ForegroundColor DarkGray;
 
     Write-Host "`n [Q] Quit" -ForegroundColor DarkRed;
     Write-Host "===================================================" -ForegroundColor Gray;
-    Write-Host "Choose an option using your keyboard [1-9, A-F, Q] : " -NoNewline;
+    Write-Host "Choose an option using your keyboard [1-9, A-G, Q] : " -NoNewline;
 
     $Key = [System.Console]::ReadKey($true);
     $Selection = [string]$Key.KeyChar;
@@ -595,13 +665,14 @@ do {
         "D" { Invoke-ReliabilityMonitor }
         "E" { Invoke-DriverBackup }
         "F" { Invoke-GodMode }
+        "G" { Invoke-DeviceTimeline }
 
         "Q" { Write-Host "`nExiting..."; Exit }
 
         # Invalid Input Error Handling
         default {
             Write-Host "`n`n[!] Invalid Selection: '$Selection'" -ForegroundColor Red;
-            Write-Host "    Please enter a valid option symbol from the menu [1-9, A-F, Q]." -ForegroundColor Red;
+            Write-Host "    Please enter a valid option symbol from the menu [1-9, A-G, Q]." -ForegroundColor Red;
             Start-Sleep -Seconds 3;
         }
     }
